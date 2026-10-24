@@ -72,8 +72,8 @@ export default function RegistrarVisitaScreen() {
             </View>
           ) : (
             <View style={styles.accionesFoto}>
-              <Pressable onPress={async () => setFotoUri(await tomarFotoConCamara())} style={styles.botonSecundario}><Text style={styles.textoSecundario}>📷 Cámara</Text></Pressable>
-              <Pressable onPress={async () => setFotoUri(await elegirFotoDeGaleria())} style={styles.botonSecundario}><Text style={styles.textoSecundario}>🖼️ Galería</Text></Pressable>
+              <Pressable onPress={async () => setFotoUri(await tomarFotoConCamara())} style={styles.botonSecundario}><Text style={styles.textoSecundario}>Sacar Foto</Text></Pressable>
+              <Pressable onPress={async () => setFotoUri(await elegirFotoDeGaleria())} style={styles.botonSecundario}><Text style={styles.textoSecundario}>Galería</Text></Pressable>
             </View>
           )}
 
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   separacion: { marginTop: 20 },
   foto: { width: '100%', aspectRatio: 4 / 3, borderRadius: 18, backgroundColor: '#E7EEE8' },
   accionesFoto: { flexDirection: 'row', justifyContent: 'space-between' },
-  botonSecundario: { flex: 0.48, minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#849993', justifyContent: 'center', alignItems: 'center' },
+  botonSecundario: { flex: 0.48, minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#849993', justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' },
   textoSecundario: { fontSize: 16, fontWeight: 'bold', color: '#183B42' },
   quitarFoto: { minHeight: 40, justifyContent: 'center', marginTop: 5 },
   textoQuitar: { fontSize: 16, color: '#A32020', fontWeight: 'bold' },

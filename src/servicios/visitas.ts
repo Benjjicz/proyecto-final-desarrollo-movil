@@ -1,15 +1,16 @@
 import * as Crypto from 'expo-crypto';
-import { File } from 'expo-file-system';
 import * as Location from 'expo-location';
 import * as Network from 'expo-network';
 import type { Coordenadas, Lugar } from '../tipos/lugar';
 import type { OrigenVisita, VisitaLocal } from '../tipos/visita';
-import { guardarFotoLocal } from './archivos';
+import { guardarFotoLocal, subirFotoAServidor } from './archivos';
 import { db } from './db';
 import { obtenerLugarPorId } from './lugares';
+import { API_BASE_URL, obtenerTokenApi } from './sesion';
 
 const RADIO_VISITA_METROS = 100;
-const USUARIO_MOCK = "usr-201";
+const USUARIO_MOCK = 'usr-201';
+const PATRON_ID_VISITA = /^vis-[A-Za-z0-9_-]{3,36}$/;
 
 export interface NuevaVisita {
   lugarId: string;
@@ -17,9 +18,14 @@ export interface NuevaVisita {
   fotoUri?: string | null;
 }
 
+function generarIdVisita(): string {
+  const limpio = Crypto.randomUUID().replace(/-/g, '').slice(0, 28);
+  return `vis-${limpio}`;
+}
+
 export async function obtenerVisitasLocales(): Promise<VisitaLocal[]> {
   const resultados = db.getAllSync<any>('SELECT * FROM visitas ORDER BY fechaHora DESC');
-  
+
   return resultados.map((fila: any) => ({
     id: fila.id,
     lugarId: fila.lugarId,
@@ -39,16 +45,15 @@ async function guardarVisita(entrada: NuevaVisita, origen: OrigenVisita): Promis
   if (notaTexto.length > 300) throw new Error('La nota admite hasta 300 caracteres.');
 
   const notaFinal = notaTexto.length > 0 ? notaTexto : null;
-  const id = Crypto.randomUUID();
+  const id = generarIdVisita();
   const fechaHora = new Date().toISOString();
-  
-  let archivoFotoGuardada: File | null = null;
+
+  let fotoUriFinal: string | null = null;
 
   try {
     if (entrada.fotoUri) {
-      archivoFotoGuardada = guardarFotoLocal(entrada.fotoUri, id);
+      fotoUriFinal = guardarFotoLocal(entrada.fotoUri, id);
     }
-    const fotoUriFinal = archivoFotoGuardada ? archivoFotoGuardada.uri : null;
 
     db.runSync(
       `INSERT INTO visitas (id, usuarioId, lugarId, fechaHora, origen, fotoUri, nota, sincronizada)
@@ -57,15 +62,18 @@ async function guardarVisita(entrada: NuevaVisita, origen: OrigenVisita): Promis
     );
 
     const nuevaVisita: VisitaLocal = {
-      id, lugarId, fechaHora, origen, fotoUri: fotoUriFinal, nota: notaFinal, sincronizada: false
+      id,
+      lugarId,
+      fechaHora,
+      origen,
+      fotoUri: fotoUriFinal,
+      nota: notaFinal,
+      sincronizada: false,
     };
 
-    void intentarSincronizar(); // Disparamos la cola
+    void intentarSincronizar();
     return nuevaVisita;
   } catch (error) {
-    if (archivoFotoGuardada?.exists) {
-      try { archivoFotoGuardada.delete(); } catch {}
-    }
     throw error;
   }
 }
@@ -77,29 +85,34 @@ export function registrarVisitaManual(entrada: NuevaVisita): Promise<VisitaLocal
 export async function buscarLugarPorQr(codigo: string): Promise<Lugar> {
   const coincidencia = /^COLON:([a-zA-Z0-9_-]{1,100})$/.exec(codigo.trim());
   if (!coincidencia) throw new Error('Este QR no pertenece a Mi Ciudad.');
-  
+
   const respuesta = await obtenerLugarPorId(coincidencia[1]);
   const lugar = respuesta.datos;
-  
+
   if (!lugar.activo || lugar.codigoQr !== codigo.trim()) {
     throw new Error('El QR no corresponde a un lugar disponible.');
   }
   return lugar;
 }
 
-export async function registrarVisitaPorQr(codigo: string, nota: string, fotoUri?: string | null): Promise<VisitaLocal> {
+export async function registrarVisitaPorQr(
+  codigo: string,
+  nota: string,
+  fotoUri?: string | null
+): Promise<VisitaLocal> {
   const lugar = await buscarLugarPorQr(codigo);
   return guardarVisita({ lugarId: lugar.id, nota, fotoUri }, 'qr');
 }
 
 function distanciaMetros(origen: Coordenadas, destino: Coordenadas): number {
-  const radianes = (grados: number) => grados * Math.PI / 180;
+  const radianes = (grados: number) => (grados * Math.PI) / 180;
   const latitud1 = radianes(origen.latitud);
   const latitud2 = radianes(destino.latitud);
   const diferenciaLatitud = radianes(destino.latitud - origen.latitud);
   const diferenciaLongitud = radianes(destino.longitud - origen.longitud);
 
-  const calculo = Math.sin(diferenciaLatitud / 2) ** 2 +
+  const calculo =
+    Math.sin(diferenciaLatitud / 2) ** 2 +
     Math.cos(latitud1) * Math.cos(latitud2) * Math.sin(diferenciaLongitud / 2) ** 2;
 
   const limitado = Math.min(1, Math.max(0, calculo));
@@ -124,11 +137,16 @@ export async function registrarVisitaPorGps(entrada: NuevaVisita): Promise<Visit
     throw new Error('No pudimos obtener tu ubicación.');
   }
 
-  const { latitude, longitude, accuracy } = posicion.coords;
-  const distancia = distanciaMetros({ latitud: latitude, longitude: longitude }, lugar.coordenadas);
+  const { latitude, longitude } = posicion.coords;
+  const distancia = distanciaMetros(
+    { latitud: latitude, longitud: longitude },
+    lugar.coordenadas
+  );
 
-  if (distancia > RADIO_VISITA_METROS) throw new Error(`Estás muy lejos (a más de ${RADIO_VISITA_METROS}m).`);
-  
+  if (distancia > RADIO_VISITA_METROS) {
+    throw new Error(`Estás muy lejos (a más de ${RADIO_VISITA_METROS}m).`);
+  }
+
   return guardarVisita(entrada, 'gps');
 }
 
@@ -137,14 +155,88 @@ export const intentarSincronizar = async (): Promise<void> => {
     const estadoRed = await Network.getNetworkStateAsync();
     if (!estadoRed.isConnected || !estadoRed.isInternetReachable) return;
 
-    const pendientes = db.getAllSync<any>('SELECT * FROM visitas WHERE sincronizada = 0');
-    if (pendientes.length === 0) return;
+    const token = await obtenerTokenApi();
+    if (!token) return;
 
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulamos API del profesor
-    pendientes.forEach((visita: any) => {
-      db.runSync('UPDATE visitas SET sincronizada = 1 WHERE id = ?', [visita.id]);
+    // 1. Subimos las visitas pendientes locales a POST /yo/visitas
+    const pendientes = db.getAllSync<any>('SELECT * FROM visitas WHERE sincronizada = 0');
+
+    for (const visita of pendientes) {
+      try {
+        let idValido: string = visita.id;
+        // Si quedó alguna visita vieja en SQLite sin el prefijo "vis-", la migramos antes de enviarla
+        if (!PATRON_ID_VISITA.test(idValido)) {
+          idValido = generarIdVisita();
+          db.runSync('UPDATE visitas SET id = ? WHERE id = ?', [idValido, visita.id]);
+        }
+
+        let fotoUrlRemota: string | null = visita.fotoUri ?? null;
+        if (
+          fotoUrlRemota &&
+          !fotoUrlRemota.startsWith('http://') &&
+          !fotoUrlRemota.startsWith('https://')
+        ) {
+          fotoUrlRemota = await subirFotoAServidor(fotoUrlRemota, token);
+        }
+
+        const respuesta = await fetch(`${API_BASE_URL}/yo/visitas`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            id: idValido,
+            lugarId: visita.lugarId,
+            fechaHora: visita.fechaHora,
+            origen: visita.origen,
+            fotoUri: fotoUrlRemota,
+            nota: visita.nota ?? null,
+          }),
+        });
+
+        if (respuesta.ok || respuesta.status === 200 || respuesta.status === 201) {
+          db.runSync('UPDATE visitas SET sincronizada = 1 WHERE id = ?', [idValido]);
+        } else {
+          const textoError = await respuesta.text();
+          console.warn(`No se pudo sincronizar la visita ${idValido}:`, textoError);
+        }
+      } catch (errorIndividual) {
+        console.warn('Error sincronizando visita individual:', errorIndividual);
+      }
+    }
+
+    // 2. Descargamos las visitas remotas de GET /yo/visitas por si había previas en el servidor
+    const respuestaLista = await fetch(`${API_BASE_URL}/yo/visitas?porPagina=500`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
     });
+
+    if (respuestaLista.ok) {
+      const jsonLista = await respuestaLista.json();
+      const visitasServidor: any[] = jsonLista?.datos ?? [];
+
+      for (const remota of visitasServidor) {
+        db.runSync(
+          `INSERT OR IGNORE INTO visitas (id, usuarioId, lugarId, fechaHora, origen, fotoUri, nota, sincronizada)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
+          [
+            remota.id,
+            remota.usuarioId ?? USUARIO_MOCK,
+            remota.lugarId,
+            remota.fechaHora,
+            remota.origen,
+            remota.fotoUri ?? null,
+            remota.nota ?? null,
+          ]
+        );
+      }
+    }
   } catch (error) {
-    console.error("Error en sincronización:", error);
+    console.error('Error general en sincronización:', error);
   }
 };

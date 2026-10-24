@@ -23,7 +23,7 @@ export default function EscanearScreen() {
   async function escanear(data: string) {
     if (bloqueado.current) return;
     const coincidencia = /^COLON:([a-zA-Z0-9_-]{1,100})$/.exec(data.trim());
-    if (!coincidencia) return; // FALLO SILENCIOSO: ignora QRs ajenos
+    if (!coincidencia) return;
 
     bloqueado.current = true;
     try {
@@ -66,7 +66,7 @@ export default function EscanearScreen() {
   if (lugar) {
     return (
       <SafeAreaView edges={['bottom']} style={styles.container}>
-        <ScrollView contentContainerStyle={styles.contenido}>
+        <ScrollView contentContainerStyle={styles.contenido} keyboardShouldPersistTaps="handled">
           <Text style={styles.etiqueta}>LUGAR RECONOCIDO</Text>
           <Text style={styles.titulo}>{lugar.nombre}</Text>
           
@@ -75,8 +75,12 @@ export default function EscanearScreen() {
             <Image source={{ uri: fotoUri }} style={styles.foto} />
           ) : (
             <View style={styles.filaBotonesFoto}>
-              <Pressable onPress={async () => setFotoUri(await tomarFotoConCamara())} style={styles.secundario}><Text style={styles.textoSecundario}>📷 Cámara</Text></Pressable>
-              <Pressable onPress={async () => setFotoUri(await elegirFotoDeGaleria())} style={styles.secundario}><Text style={styles.textoSecundario}>🖼️ Galería</Text></Pressable>
+              <Pressable onPress={async () => setFotoUri(await tomarFotoConCamara())} style={styles.secundario}>
+                <Text style={styles.textoSecundario}>📷 Sacar Foto</Text>
+              </Pressable>
+              <Pressable onPress={async () => setFotoUri(await elegirFotoDeGaleria())} style={styles.secundario}>
+                <Text style={styles.textoSecundario}>🖼️ Galería</Text>
+              </Pressable>
             </View>
           )}
 
@@ -113,7 +117,7 @@ const styles = StyleSheet.create({
   entrada: { minHeight: 120, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#849993', backgroundColor: '#FFF', fontSize: 18, textAlignVertical: 'top' },
   boton: { minHeight: 52, borderRadius: 16, backgroundColor: '#174F49', justifyContent: 'center', alignItems: 'center', marginTop: 22 },
   textoBoton: { fontSize: 17, fontWeight: 'bold', color: '#FFF' },
-  secundario: { flex: 0.48, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#849993', alignItems: 'center' },
+  secundario: { flex: 0.48, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#849993', alignItems: 'center', backgroundColor: '#FFF' },
   textoSecundario: { fontSize: 16, fontWeight: 'bold', color: '#14665C' },
   filaBotonesFoto: { flexDirection: 'row', justifyContent: 'space-between' },
   foto: { width: '100%', height: 200, borderRadius: 16 }

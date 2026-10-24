@@ -22,3 +22,5 @@ export const inicializarBaseDeDatos = () => {
     console.error("-> Error al inicializar SQLite:", error);
   }
 };
+
+inicializarBaseDeDatos();
