@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { obtenerLugares } from '../../servicios/lugares';
@@ -9,7 +9,6 @@ export default function PantallaMenuRegistro() {
   const [lugares, setLugares] = useState<Lugar[]>([]);
   const [cargando, setCargando] = useState(true);
 
-  // Cargamos los lugares reales de tu compañero ni bien abre el menú
   useEffect(() => {
     obtenerLugares().then((res: any) => {
       setLugares(res.datos);
@@ -22,7 +21,6 @@ export default function PantallaMenuRegistro() {
       Alert.alert("Cargando", "Esperá un segundo a que carguen los lugares...");
       return;
     }
-    // Toma dinámicamente el ID del primer lugar de la base de datos real
     router.push({ 
       pathname: '/registrar-visita/[id]', 
       params: { id: lugares[0].id, origen: 'gps' } 
@@ -32,9 +30,10 @@ export default function PantallaMenuRegistro() {
   if (modoManual) {
     return (
       <View style={styles.contenedor}>
+        <Stack.Screen options={{ title: 'Buscar lugar' }} />
         <Text style={styles.texto}>Elegí el lugar de la lista</Text>
         {cargando ? (
-          <ActivityIndicator size="large" color="#000" style={{ marginTop: 20 }} />
+          <ActivityIndicator size="large" color="#174F49" style={{ marginTop: 20 }} />
         ) : (
           <FlatList
             data={lugares}
@@ -59,6 +58,9 @@ export default function PantallaMenuRegistro() {
 
   return (
     <View style={styles.contenedorCentro}>
+      {/* Esto cambia el título de la barra superior */}
+      <Stack.Screen options={{ title: 'Nueva Visita' }} />
+      
       <Text style={styles.tituloMenu}>¿Cómo querés registrar tu visita?</Text>
 
       <TouchableOpacity style={styles.botonPrincipal} onPress={() => router.push('/escanear')}>
@@ -81,15 +83,16 @@ export default function PantallaMenuRegistro() {
 }
 
 const styles = StyleSheet.create({
-  contenedor: { flex: 1, backgroundColor: '#fff' },
-  contenedorCentro: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#fff' },
-  tituloMenu: { fontSize: 28, fontWeight: 'bold', marginBottom: 30, textAlign: 'center', color: '#000' },
-  texto: { fontSize: 24, paddingTop: 40, paddingBottom: 20, paddingHorizontal: 20, color: '#000', fontWeight: 'bold' },
-  botonPrincipal: { backgroundColor: '#000', padding: 22, borderRadius: 10, marginBottom: 18 },
+  contenedor: { flex: 1, backgroundColor: '#F7F7F2' },
+  contenedorCentro: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#F7F7F2' },
+  tituloMenu: { fontSize: 28, fontWeight: 'bold', marginBottom: 30, textAlign: 'center', color: '#183B42' },
+  texto: { fontSize: 24, paddingTop: 40, paddingBottom: 20, paddingHorizontal: 20, color: '#183B42', fontWeight: 'bold' },
+  // Acá aplicamos el verde oscuro oficial de la app
+  botonPrincipal: { backgroundColor: '#174F49', padding: 22, borderRadius: 12, marginBottom: 18 },
   botonVolver: { padding: 18, marginVertical: 10, borderRadius: 10, alignItems: 'center' },
-  textoBoton: { color: '#FFF', fontSize: 20, fontWeight: 'bold', textAlign: 'center' },
-  textoBotonSecundario: { color: '#444', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
+  textoBoton: { color: '#FFF', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
+  textoBotonSecundario: { color: '#586C70', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
   botonLista: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#ccc' },
-  textoBotonLista: { fontSize: 22, color: '#000', fontWeight: 'bold' },
-  direccionLista: { fontSize: 16, color: '#555', marginTop: 4 },
+  textoBotonLista: { fontSize: 22, color: '#183B42', fontWeight: 'bold' },
+  direccionLista: { fontSize: 16, color: '#586C70', marginTop: 4 },
 });

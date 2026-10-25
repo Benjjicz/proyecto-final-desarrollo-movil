@@ -82,18 +82,23 @@ export function registrarVisitaManual(entrada: NuevaVisita): Promise<VisitaLocal
   return guardarVisita(entrada, 'manual');
 }
 
+// --- FUNCIÓN ACTUALIZADA ---
 export async function buscarLugarPorQr(codigo: string): Promise<Lugar> {
-  const coincidencia = /^COLON:([a-zA-Z0-9_-]{1,100})$/.exec(codigo.trim());
-  if (!coincidencia) throw new Error('Este QR no pertenece a Mi Ciudad.');
+  const textoLimpio = codigo.trim();
+  
+  // Consultamos a la API enviando el texto codificado
+  const respuesta = await fetch(`${API_BASE_URL}/lugares/qr/${encodeURIComponent(textoLimpio)}`);
+  const json = await respuesta.json();
 
-  const respuesta = await obtenerLugarPorId(coincidencia[1]);
-  const lugar = respuesta.datos;
-
-  if (!lugar.activo || lugar.codigoQr !== codigo.trim()) {
-    throw new Error('El QR no corresponde a un lugar disponible.');
+  // Si la API responde con un error (ej: 404 QR_NO_RECONOCIDO), lanzamos su mensaje
+  if (!respuesta.ok) {
+    throw new Error(json.error?.mensaje || 'El código no es válido.');
   }
-  return lugar;
+
+  // Si la API lo encontró, devolvemos los datos del lugar
+  return json.datos;
 }
+// ----------------------------
 
 export async function registrarVisitaPorQr(
   codigo: string,
@@ -158,13 +163,11 @@ export const intentarSincronizar = async (): Promise<void> => {
     const token = await obtenerTokenApi();
     if (!token) return;
 
-    // 1. Subimos las visitas pendientes locales a POST /yo/visitas
     const pendientes = db.getAllSync<any>('SELECT * FROM visitas WHERE sincronizada = 0');
 
     for (const visita of pendientes) {
       try {
         let idValido: string = visita.id;
-        // Si quedó alguna visita vieja en SQLite sin el prefijo "vis-", la migramos antes de enviarla
         if (!PATRON_ID_VISITA.test(idValido)) {
           idValido = generarIdVisita();
           db.runSync('UPDATE visitas SET id = ? WHERE id = ?', [idValido, visita.id]);
@@ -207,7 +210,6 @@ export const intentarSincronizar = async (): Promise<void> => {
       }
     }
 
-    // 2. Descargamos las visitas remotas de GET /yo/visitas por si había previas en el servidor
     const respuestaLista = await fetch(`${API_BASE_URL}/yo/visitas?porPagina=500`, {
       method: 'GET',
       headers: {

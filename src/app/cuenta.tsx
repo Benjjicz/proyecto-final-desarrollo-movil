@@ -1,329 +1,145 @@
-import { useCallback, useState } from 'react';
-import { router, useFocusEffect } from 'expo-router';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { cerrarSesionAPI, iniciarSesionAPI, obtenerTokenApi } from '../servicios/sesion';
 
-import {
-  cerrarSesionDemo,
-  iniciarSesionDemo,
-  obtenerSesionDemo,
-} from '../servicios/sesion';
-import type { SesionDemo } from '../tipos/sesion';
-
-export default function CuentaScreen() {
-  const [sesion, setSesion] = useState<SesionDemo | null>(null);
+export default function PantallaCuenta() {
   const [cargando, setCargando] = useState(true);
+  const [estaLogueado, setEstaLogueado] = useState(false);
+
+  // Estados del formulario
+  const [email, setEmail] = useState('');
+  const [contrasena, setContrasena] = useState('');
   const [procesando, setProcesando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [intento, setIntento] = useState(0);
 
-  useFocusEffect(
-    useCallback(() => {
-      let activo = true;
+  // Al abrir la pestaña, verificamos si ya hay un token guardado
+  useEffect(() => {
+    verificarSesion();
+  }, []);
 
-      async function cargarSesion() {
-        setCargando(true);
-        setError(null);
+  const verificarSesion = async () => {
+    const token = await obtenerTokenApi();
+    setEstaLogueado(!!token);
+    setCargando(false);
+  };
 
-        try {
-          const guardada = await obtenerSesionDemo();
+  const manejarIngreso = async () => {
+    if (!email.trim() || !contrasena.trim()) {
+      Alert.alert('Datos incompletos', 'Ingresá tu email y contraseña.');
+      return;
+    }
 
-          if (activo) {
-            setSesion(guardada);
-          }
-        } catch {
-          if (activo) {
-            setError('No pudimos leer la sesión guardada.');
-          }
-        } finally {
-          if (activo) {
-            setCargando(false);
-          }
+    setProcesando(true);
+    try {
+      await iniciarSesionAPI(email.trim(), contrasena);
+      setEstaLogueado(true);
+      Alert.alert('¡Bienvenido!', 'Iniciaste sesión correctamente.');
+    } catch (error: any) {
+      Alert.alert('Error al ingresar', error.message);
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const manejarCierreSesion = async () => {
+    Alert.alert('Cerrar sesión', '¿Seguro que querés salir?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { 
+        text: 'Salir', 
+        style: 'destructive', 
+        onPress: async () => {
+          await cerrarSesionAPI();
+          setEstaLogueado(false);
+          setEmail('');
+          setContrasena('');
         }
       }
-
-      cargarSesion();
-
-      return () => {
-        activo = false;
-      };
-    }, [intento])
-  );
-
-  async function entrar() {
-    if (procesando) {
-      return;
-    }
-
-    setProcesando(true);
-
-    try {
-      const nuevaSesion = await iniciarSesionDemo();
-      setSesion(nuevaSesion);
-    } catch {
-      Alert.alert(
-        'No pudimos iniciar la sesión',
-        'Intentá nuevamente en unos momentos.'
-      );
-    } finally {
-      setProcesando(false);
-    }
-  }
-
-  async function salir() {
-    if (procesando) {
-      return;
-    }
-
-    setProcesando(true);
-
-    try {
-      await cerrarSesionDemo();
-      setSesion(null);
-    } catch {
-      Alert.alert(
-        'No pudimos cerrar la sesión',
-        'Intentá nuevamente en unos momentos.'
-      );
-    } finally {
-      setProcesando(false);
-    }
-  }
+    ]);
+  };
 
   if (cargando) {
     return (
       <View style={styles.centrado}>
-        <ActivityIndicator
-          size="large"
-          color="#14665C"
-          accessibilityLabel="Cargando cuenta"
-        />
+        <ActivityIndicator size="large" color="#174F49" />
       </View>
     );
   }
 
-  if (error) {
+  // --- VISTA: USUARIO LOGUEADO ---
+  if (estaLogueado) {
     return (
-      <View style={styles.centrado}>
-        <Text style={styles.descripcion}>{error}</Text>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setIntento((valor) => valor + 1)}
-          style={styles.boton}
-        >
-          <Text style={styles.textoBoton}>Reintentar</Text>
-        </Pressable>
+      <View style={styles.contenedor}>
+        <Stack.Screen options={{ title: 'Mi Cuenta' }} />
+        <View style={styles.tarjetaPerfil}>
+          <Text style={styles.titulo}>¡Hola!</Text>
+          <Text style={styles.descripcion}>Tu sesión está activa y tus visitas se sincronizarán automáticamente con la nube.</Text>
+          
+          <TouchableOpacity style={[styles.boton, styles.botonPeligro]} onPress={manejarCierreSesion}>
+            <Text style={styles.textoBoton}>Cerrar sesión</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
 
+  // --- VISTA: FORMULARIO DE LOGIN ---
   return (
-    <SafeAreaView edges={['bottom']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.contenido}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarTexto}>
-            {sesion ? 'D' : 'C'}
-          </Text>
-        </View>
+    <KeyboardAvoidingView 
+      style={styles.contenedor} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <Stack.Screen options={{ title: 'Ingresar' }} />
+      
+      <View style={styles.formulario}>
+        <Text style={styles.titulo}>Iniciar sesión</Text>
+        <Text style={styles.descripcion}>Ingresá para guardar tus recorridos.</Text>
 
-        <Text style={styles.etiqueta}>TU ESPACIO EN COLÓN</Text>
+        <Text style={styles.label}>Correo electrónico</Text>
+        <TextInput 
+          style={styles.input} 
+          placeholder="ejemplo@mail.com" 
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
 
-        <Text style={styles.titulo}>
-          {sesion ? '¡Hola, visitante!' : 'Cada paseo, un recuerdo.'}
-        </Text>
+        <Text style={styles.label}>Contraseña</Text>
+        <TextInput 
+          style={styles.input} 
+          placeholder="Tu contraseña" 
+          value={contrasena}
+          onChangeText={setContrasena}
+          secureTextEntry
+        />
 
-        <Text style={styles.descripcion}>
-          {sesion
-            ? 'Tu sesión de demostración está activa en este teléfono.'
-            : 'Explorá los lugares y el mapa libremente. Acá vas a poder acceder a tu cuenta.'}
-        </Text>
-
-        <View style={styles.tarjeta}>
-          <Text style={styles.tituloTarjeta}>
-            Versión de demostración
-          </Text>
-
-          <Text style={styles.textoTarjeta}>
-            Estamos preparando el acceso a la cuenta. Por ahora
-            podés probar una sesión local, sin correo ni contraseña.
-            No se crea una cuenta real.
-          </Text>
-
-          <Text style={styles.textoTarjeta}>
-            Tus favoritos siguen guardados en este teléfono.
-            Todavía no están asociados a un usuario ni se sincronizan
-            con otros dispositivos.
-          </Text>
-        </View>
-
-        {sesion ? (
-          <>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/favoritos')}
-              style={styles.boton}
-            >
-              <Text style={styles.textoBoton}>
-                ♥ Ver mis favoritos
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              disabled={procesando}
-              onPress={salir}
-              style={[
-                styles.botonSecundario,
-                procesando && styles.deshabilitado,
-              ]}
-            >
-              <Text style={styles.textoSecundario}>
-                {procesando ? 'Cerrando…' : 'Cerrar sesión demo'}
-              </Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <Pressable
-              accessibilityRole="button"
-              disabled={procesando}
-              onPress={entrar}
-              style={[
-                styles.boton,
-                procesando && styles.deshabilitado,
-              ]}
-            >
-              <Text style={styles.textoBoton}>
-                {procesando
-                  ? 'Ingresando…'
-                  : 'Probar sesión de demostración'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.back()}
-              style={styles.botonSecundario}
-            >
-              <Text style={styles.textoSecundario}>
-                Seguir explorando
-              </Text>
-            </Pressable>
-          </>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+        <TouchableOpacity 
+          style={styles.boton} 
+          onPress={manejarIngreso}
+          disabled={procesando}
+        >
+          {procesando ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.textoBoton}>Ingresar</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F7F2',
-  },
-  centrado: {
-    flex: 1,
-    padding: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F7F7F2',
-  },
-  contenido: {
-    padding: 24,
-    paddingBottom: 40,
-  },
-  avatar: {
-    width: 76,
-    height: 76,
-    borderRadius: 26,
-    backgroundColor: '#DCEACD',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 26,
-  },
-  avatarTexto: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#24594B',
-  },
-  etiqueta: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    letterSpacing: 2,
-    color: '#14665C',
-  },
-  titulo: {
-    fontSize: 34,
-    fontWeight: 'bold',
-    color: '#183B42',
-    marginTop: 12,
-  },
-  descripcion: {
-    fontSize: 18,
-    lineHeight: 27,
-    color: '#586C70',
-    marginTop: 16,
-  },
-  tarjeta: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 22,
-    marginVertical: 28,
-    borderWidth: 1,
-    borderColor: '#E1E6DE',
-  },
-  tituloTarjeta: {
-    fontSize: 21,
-    fontWeight: 'bold',
-    color: '#183B42',
-  },
-  textoTarjeta: {
-    fontSize: 17,
-    lineHeight: 26,
-    color: '#586C70',
-    marginTop: 12,
-  },
-  boton: {
-    minHeight: 52,
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: '#174F49',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-  textoBoton: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  botonSecundario: {
-    minHeight: 52,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#849993',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-  textoSecundario: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#183B42',
-    textAlign: 'center',
-  },
-  deshabilitado: {
-    opacity: 0.6,
-  },
+  contenedor: { flex: 1, backgroundColor: '#F7F7F2', padding: 24, justifyContent: 'center' },
+  centrado: { flex: 1, backgroundColor: '#F7F7F2', justifyContent: 'center', alignItems: 'center' },
+  formulario: { backgroundColor: '#FFF', padding: 24, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8E4' },
+  tarjetaPerfil: { backgroundColor: '#FFF', padding: 32, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8E4', alignItems: 'center' },
+  titulo: { fontSize: 28, fontWeight: 'bold', color: '#183B42', marginBottom: 8, textAlign: 'center' },
+  descripcion: { fontSize: 16, color: '#586C70', marginBottom: 24, textAlign: 'center', lineHeight: 22 },
+  label: { fontSize: 16, fontWeight: 'bold', color: '#183B42', marginBottom: 8 },
+  input: { backgroundColor: '#F7F7F2', borderWidth: 1, borderColor: '#849993', borderRadius: 12, padding: 16, fontSize: 16, marginBottom: 20, color: '#000' },
+  boton: { backgroundColor: '#174F49', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  botonPeligro: { backgroundColor: '#8B0000', width: '100%', marginTop: 20 },
+  textoBoton: { color: '#FFF', fontSize: 18, fontWeight: 'bold' }
 });

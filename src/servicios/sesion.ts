@@ -1,100 +1,42 @@
-import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 
-import type { SesionDemo } from '../tipos/sesion';
+const CLAVE_SESION = 'mi-ciudad.sesion-token';
 
-const CLAVE_SESION = 'mi-ciudad.sesion-demo';
-
-// Cambiá esta IP por la IPv4 de tu computadora si no usás variable de entorno .env
+// Ajustá la IP si es necesario
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://192.168.100.8:3000';
 
-export async function obtenerSesionDemo(): Promise<SesionDemo | null> {
-  const token = await SecureStore.getItemAsync(CLAVE_SESION);
+export async function iniciarSesionAPI(email: string, contrasena: string) {
+  const respuesta = await fetch(`${API_BASE_URL}/auth/ingreso`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ email, contrasena }),
+  });
 
-  if (token === null) {
-    return null;
+  const json = await respuesta.json();
+
+  if (!respuesta.ok) {
+    // Captura el mensaje de error exacto del servidor (ej: "Credenciales inválidas")
+    throw new Error(json.error?.mensaje || 'Error al iniciar sesión');
   }
 
-  return {
-    modo: 'demo',
-    token,
-  };
-}
-
-export async function iniciarSesionDemo(): Promise<SesionDemo> {
-  try {
-    const respuesta = await fetch(`${API_BASE_URL}/auth/ingreso`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: 'lucia@mail.com',
-        contrasena: 'lucia1234',
-      }),
-    });
-
-    if (respuesta.ok) {
-      const json = await respuesta.json();
-      const tokenReal: string | undefined = json?.datos?.token;
-      if (tokenReal) {
-        await SecureStore.setItemAsync(CLAVE_SESION, tokenReal);
-        return {
-          modo: 'demo',
-          token: tokenReal,
-        };
-      }
-    }
-  } catch {
-    // Si no hay conexión al iniciar sesión demo, caemos al token local offline
+  const tokenReal = json.datos?.token;
+  if (tokenReal) {
+    await SecureStore.setItemAsync(CLAVE_SESION, tokenReal);
+    // Retornamos los datos del usuario por si la interfaz los necesita
+    return json.datos.usuario; 
   }
 
-  const token = `demo-${Crypto.randomUUID()}`;
-  await SecureStore.setItemAsync(CLAVE_SESION, token);
-
-  return {
-    modo: 'demo',
-    token,
-  };
+  throw new Error('El servidor no devolvió un token válido.');
 }
 
+// Esta función la usa visitas.ts para saber si hay sesión antes de sincronizar
 export async function obtenerTokenApi(): Promise<string | null> {
-  const tokenGuardado = await SecureStore.getItemAsync(CLAVE_SESION);
-
-  if (tokenGuardado && !tokenGuardado.startsWith('demo-')) {
-    return tokenGuardado;
-  }
-
-  try {
-    const respuesta = await fetch(`${API_BASE_URL}/auth/ingreso`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: 'lucia@mail.com',
-        contrasena: 'lucia1234',
-      }),
-    });
-
-    if (!respuesta.ok) {
-      return null;
-    }
-
-    const json = await respuesta.json();
-    const tokenReal: string | undefined = json?.datos?.token;
-
-    if (tokenReal) {
-      await SecureStore.setItemAsync(CLAVE_SESION, tokenReal);
-      return tokenReal;
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
+  return await SecureStore.getItemAsync(CLAVE_SESION);
 }
 
-export async function cerrarSesionDemo(): Promise<void> {
+export async function cerrarSesionAPI(): Promise<void> {
   await SecureStore.deleteItemAsync(CLAVE_SESION);
 }

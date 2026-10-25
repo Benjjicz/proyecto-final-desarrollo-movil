@@ -20,21 +20,30 @@ export default function EscanearScreen() {
 
   useFocusEffect(useCallback(() => { setEnFoco(true); return () => setEnFoco(false); }, []));
 
+  // --- FUNCIÓN ACTUALIZADA ---
   async function escanear(data: string) {
     if (bloqueado.current) return;
-    const coincidencia = /^COLON:([a-zA-Z0-9_-]{1,100})$/.exec(data.trim());
-    if (!coincidencia) return;
-
     bloqueado.current = true;
+    
     try {
+      // Mandamos todo el texto a la API (ya no validamos el regex localmente)
       const encontrado = await buscarLugarPorQr(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setLugar(encontrado);
       setCodigo(data.trim());
-    } catch {
-      bloqueado.current = false;
+    } catch (error) {
+      // Atrapamos el error de la API (ej: 404 QR_NO_RECONOCIDO) y lo mostramos
+      Alert.alert(
+        'Código no reconocido', 
+        error instanceof Error ? error.message : 'Error al leer el QR',
+        [{ 
+          text: 'OK', 
+          onPress: () => { bloqueado.current = false; } 
+        }]
+      );
     }
   }
+  // ----------------------------
 
   async function guardar() {
     if (!lugar || guardando) return;
@@ -76,10 +85,10 @@ export default function EscanearScreen() {
           ) : (
             <View style={styles.filaBotonesFoto}>
               <Pressable onPress={async () => setFotoUri(await tomarFotoConCamara())} style={styles.secundario}>
-                <Text style={styles.textoSecundario}>📷 Sacar Foto</Text>
+                <Text style={styles.textoSecundario}>Sacar Foto</Text>
               </Pressable>
               <Pressable onPress={async () => setFotoUri(await elegirFotoDeGaleria())} style={styles.secundario}>
-                <Text style={styles.textoSecundario}>🖼️ Galería</Text>
+                <Text style={styles.textoSecundario}>Galería</Text>
               </Pressable>
             </View>
           )}
@@ -117,8 +126,19 @@ const styles = StyleSheet.create({
   entrada: { minHeight: 120, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#849993', backgroundColor: '#FFF', fontSize: 18, textAlignVertical: 'top' },
   boton: { minHeight: 52, borderRadius: 16, backgroundColor: '#174F49', justifyContent: 'center', alignItems: 'center', marginTop: 22 },
   textoBoton: { fontSize: 17, fontWeight: 'bold', color: '#FFF' },
-  secundario: { flex: 0.48, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: '#849993', alignItems: 'center', backgroundColor: '#FFF' },
-  textoSecundario: { fontSize: 16, fontWeight: 'bold', color: '#14665C' },
   filaBotonesFoto: { flexDirection: 'row', justifyContent: 'space-between' },
+  secundario: { 
+    flex: 0.48, 
+    paddingVertical: 14, 
+    borderRadius: 14, 
+    borderWidth: 1, 
+    borderColor: '#849993', 
+    alignItems: 'center', 
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    gap: 8
+  },
+  textoSecundario: { fontSize: 16, fontWeight: 'bold', color: '#14665C' },
   foto: { width: '100%', height: 200, borderRadius: 16 }
 });
