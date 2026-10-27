@@ -82,23 +82,18 @@ export function registrarVisitaManual(entrada: NuevaVisita): Promise<VisitaLocal
   return guardarVisita(entrada, 'manual');
 }
 
-// --- FUNCIÓN ACTUALIZADA ---
 export async function buscarLugarPorQr(codigo: string): Promise<Lugar> {
   const textoLimpio = codigo.trim();
   
-  // Consultamos a la API enviando el texto codificado
   const respuesta = await fetch(`${API_BASE_URL}/lugares/qr/${encodeURIComponent(textoLimpio)}`);
   const json = await respuesta.json();
 
-  // Si la API responde con un error (ej: 404 QR_NO_RECONOCIDO), lanzamos su mensaje
   if (!respuesta.ok) {
     throw new Error(json.error?.mensaje || 'El código no es válido.');
   }
 
-  // Si la API lo encontró, devolvemos los datos del lugar
   return json.datos;
 }
-// ----------------------------
 
 export async function registrarVisitaPorQr(
   codigo: string,
@@ -242,3 +237,12 @@ export const intentarSincronizar = async (): Promise<void> => {
     console.error('Error general en sincronización:', error);
   }
 };
+
+// --- NUEVA FUNCIÓN PARA LIMPIAR AL CERRAR SESIÓN ---
+export function limpiarVisitasLocales() {
+  try {
+    db.runSync('DELETE FROM visitas');
+  } catch (error) {
+    console.error('Error al limpiar SQLite en el logout:', error);
+  }
+}

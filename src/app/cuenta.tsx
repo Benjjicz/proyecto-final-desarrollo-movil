@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { cerrarSesionAPI, iniciarSesionAPI, obtenerTokenApi } from '../servicios/sesion';
+import { intentarSincronizar, limpiarVisitasLocales } from '../servicios/visitas';
 
 export default function PantallaCuenta() {
   const [cargando, setCargando] = useState(true);
@@ -32,6 +33,10 @@ export default function PantallaCuenta() {
     setProcesando(true);
     try {
       await iniciarSesionAPI(email.trim(), contrasena);
+      
+      // Descargamos los datos de la nube automáticamente
+      await intentarSincronizar(); 
+      
       setEstaLogueado(true);
       Alert.alert('¡Bienvenido!', 'Iniciaste sesión correctamente.');
     } catch (error: any) {
@@ -49,6 +54,7 @@ export default function PantallaCuenta() {
         style: 'destructive', 
         onPress: async () => {
           await cerrarSesionAPI();
+          limpiarVisitasLocales(); // Limpia la base de datos de SQLite
           setEstaLogueado(false);
           setEmail('');
           setContrasena('');
