@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { cerrarSesionAPI, iniciarSesionAPI, obtenerTokenApi } from '../servicios/sesion';
+import { API_BASE_URL, cerrarSesionAPI, iniciarSesionAPI, obtenerTokenApi, reingresoBiometrico } from '../servicios/sesion';
 import { intentarSincronizar, limpiarVisitasLocales } from '../servicios/visitas';
 
 export default function PantallaCuenta() {
@@ -13,14 +13,43 @@ export default function PantallaCuenta() {
   const [contrasena, setContrasena] = useState('');
   const [procesando, setProcesando] = useState(false);
 
-  // Al abrir la pestaña, verificamos si ya hay un token guardado
+  // Al abrir la pestaña, verificamos sesión y pedimos huella
   useEffect(() => {
     verificarSesion();
   }, []);
 
   const verificarSesion = async () => {
-    const token = await obtenerTokenApi();
-    setEstaLogueado(!!token);
+    // 1. Pedimos huella/rostro o PIN si hay un token guardado
+    const pasoBiometria = await reingresoBiometrico(); 
+    
+    if (pasoBiometria) {
+      // 2. Si pasó la biometría, validamos que el token no haya expirado (Error 401)
+      const token = await obtenerTokenApi();
+      try {
+        const respuesta = await fetch(`${API_BASE_URL}/yo/visitas`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (respuesta.status === 401) {
+          // ¡EL TOKEN MURIÓ O FUE REVOCADO! 
+          await cerrarSesionAPI();
+          limpiarVisitasLocales();
+          setEstaLogueado(false);
+          Alert.alert('Sesión expirada', 'Tu sesión caducó por seguridad. Volvé a ingresar.');
+        } else {
+          // Token válido y vigente
+          setEstaLogueado(true);
+        }
+      } catch (error) {
+        // Si el fetch falla porque no hay internet (Offline), lo dejamos entrar igual
+        setEstaLogueado(true);
+      }
+    } else {
+      // No pasó la biometría o directamente no había token guardado
+      setEstaLogueado(false);
+    }
+    
     setCargando(false);
   };
 

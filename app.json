@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "mi-ciudad",
+    "name": "Mi Ciudad",
     "slug": "mi-ciudad",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -36,7 +36,20 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Se necesita acceso a la cámara para escanear los códigos QR de los lugares."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Se necesita tu ubicación para verificar si estás en el lugar de la visita."
+        }
+      ],
+      "expo-local-authentication"
     ],
     "experiments": {
       "typedRoutes": true,
