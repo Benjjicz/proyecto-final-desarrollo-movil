@@ -118,6 +118,7 @@ function distanciaMetros(origen: Coordenadas, destino: Coordenadas): number {
   return 6371000 * 2 * Math.atan2(Math.sqrt(limitado), Math.sqrt(1 - limitado));
 }
 
+// VALIDADOR MANUAL: Calcula distancia a un lugar que el usuario eligió a mano.
 export async function registrarVisitaPorGps(entrada: NuevaVisita): Promise<VisitaLocal> {
   const respuesta = await obtenerLugarPorId(entrada.lugarId);
   const lugar = respuesta.datos;
@@ -147,6 +148,58 @@ export async function registrarVisitaPorGps(entrada: NuevaVisita): Promise<Visit
   }
 
   return guardarVisita(entrada, 'gps');
+}
+
+// DETECCIÓN AUTOMÁTICA: Encuentra el lugar turístico más cercano a tu GPS y te registra.
+export async function registrarVisitaUbicacionActual(
+  nota: string,
+  fotoUri?: string | null
+): Promise<VisitaLocal> {
+  
+  const permiso = await Location.requestForegroundPermissionsAsync();
+  if (!permiso.granted) throw new Error('No tenemos permiso de ubicación.');
+
+  const serviciosActivos = await Location.hasServicesEnabledAsync();
+  if (!serviciosActivos) throw new Error('Activá la ubicación del teléfono.');
+
+  let posicion: Location.LocationObject;
+  try {
+    posicion = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+  } catch {
+    throw new Error('No pudimos obtener tu ubicación.');
+  }
+  const { latitude, longitude } = posicion.coords;
+
+  let lugares: Lugar[] = [];
+  try {
+    const respuesta = await axios.get(`${API_BASE_URL}/lugares`);
+    lugares = respuesta.data?.datos || [];
+  } catch (error) {
+    throw new Error('No pudimos obtener la lista de lugares para comparar tu ubicación.');
+  }
+
+  let lugarDetectado: Lugar | null = null;
+  let distanciaMinima = RADIO_VISITA_METROS + 1; 
+
+  for (const lugar of lugares) {
+    if (!lugar.activo) continue; 
+
+    const distancia = distanciaMetros(
+      { latitud: latitude, longitud: longitude },
+      lugar.coordenadas
+    );
+
+    if (distancia <= RADIO_VISITA_METROS && distancia < distanciaMinima) {
+      distanciaMinima = distancia;
+      lugarDetectado = lugar;
+    }
+  }
+
+  if (!lugarDetectado) {
+    throw new Error(`No estás cerca de ningún lugar turístico registrado (a menos de ${RADIO_VISITA_METROS}m).`);
+  }
+
+  return guardarVisita({ lugarId: lugarDetectado.id, nota, fotoUri: fotoUri ?? null }, 'gps');
 }
 
 export const intentarSincronizar = async (): Promise<void> => {

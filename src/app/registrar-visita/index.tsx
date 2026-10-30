@@ -1,13 +1,30 @@
+import * as Location from 'expo-location';
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { obtenerLugares } from '../../servicios/lugares';
 import type { Lugar } from '../../tipos/lugar';
 
+// Función matemática para calcular distancia en metros
+function calcularDistanciaMetros(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const radianes = (grados: number) => (grados * Math.PI) / 180;
+  const diferenciaLatitud = radianes(lat2 - lat1);
+  const diferenciaLongitud = radianes(lon2 - lon1);
+
+  const calculo =
+    Math.sin(diferenciaLatitud / 2) ** 2 +
+    Math.cos(radianes(lat1)) * Math.cos(radianes(lat2)) * Math.sin(diferenciaLongitud / 2) ** 2;
+
+  return 6371000 * 2 * Math.atan2(Math.sqrt(calculo), Math.sqrt(1 - calculo));
+}
+
 export default function PantallaMenuRegistro() {
   const [modoManual, setModoManual] = useState(false);
   const [lugares, setLugares] = useState<Lugar[]>([]);
   const [cargando, setCargando] = useState(true);
+  
+  // Nuevo estado para que el botón de GPS gire mientras busca la señal
+  const [buscandoGps, setBuscandoGps] = useState(false);
 
   useEffect(() => {
     obtenerLugares().then((res: any) => {
@@ -16,15 +33,66 @@ export default function PantallaMenuRegistro() {
     }).catch(() => setCargando(false));
   }, []);
 
-  const irAlGps = () => {
+  const irAlGps = async () => {
     if (lugares.length === 0) {
       Alert.alert("Cargando", "Esperá un segundo a que carguen los lugares...");
       return;
     }
-    router.push({ 
-      pathname: '/registrar-visita/[id]', 
-      params: { id: lugares[0].id, origen: 'gps' } 
-    });
+
+    setBuscandoGps(true);
+    try {
+      const permiso = await Location.requestForegroundPermissionsAsync();
+      if (!permiso.granted) throw new Error('Necesitamos permiso de ubicación.');
+
+      const servicios = await Location.hasServicesEnabledAsync();
+      if (!servicios) throw new Error('Activá la ubicación del teléfono.');
+
+      const posicion = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const { latitude, longitude } = posicion.coords;
+
+      let lugarDetectado: Lugar | null = null;
+      let distanciaMinima = 101; // Radio máximo de 100 metros
+
+      // Comparamos tu GPS con TODOS los lugares de la lista
+      for (const lugar of lugares) {
+        if (!lugar.activo) continue;
+
+        const distancia = calcularDistanciaMetros(
+          latitude,
+          longitude,
+          lugar.coordenadas.latitud,
+          lugar.coordenadas.longitud
+        );
+
+        if (distancia <= 100 && distancia < distanciaMinima) {
+          distanciaMinima = distancia;
+          lugarDetectado = lugar;
+        }
+      }
+
+      // Si terminó de buscar y no encontró nada cerca
+      if (!lugarDetectado) {
+        throw new Error('No estás a menos de 100 metros de ningún lugar turístico registrado.');
+      }
+
+      // Si encontró uno, navegamos a la siguiente pantalla pasándole EL ID DETECTADO
+      router.push({ 
+        pathname: '/registrar-visita/[id]', 
+        params: { id: lugarDetectado.id, origen: 'gps' } 
+      });
+
+    } catch (error: any) {
+      let mensajeError = error.message;
+
+      // Atajamos el error crudo de Expo Location (GPS apagado o sin señal satelital)
+      if (mensajeError.includes('unsatisfied device settings') || mensajeError.includes('Location request failed')) {
+        mensajeError = 'No pudimos obtener tu ubicación. Asegurate de tener el GPS encendido en tu teléfono.';
+      }
+
+      Alert.alert("Atención", mensajeError);
+    } finally {
+      setBuscandoGps(false);
+    }
   };
 
   if (modoManual) {
@@ -58,7 +126,6 @@ export default function PantallaMenuRegistro() {
 
   return (
     <View style={styles.contenedorCentro}>
-      {/* Esto cambia el título de la barra superior */}
       <Stack.Screen options={{ title: 'Nueva Visita' }} />
       
       <Text style={styles.tituloMenu}>¿Cómo querés registrar tu visita?</Text>
@@ -67,8 +134,17 @@ export default function PantallaMenuRegistro() {
         <Text style={styles.textoBoton}>Escanear código QR</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.botonPrincipal} onPress={irAlGps}>
-        <Text style={styles.textoBoton}>Estoy acá (Usar GPS)</Text>
+      {/* Botón de GPS actualizado con spinner de carga */}
+      <TouchableOpacity 
+        style={styles.botonPrincipal} 
+        onPress={irAlGps}
+        disabled={buscandoGps}
+      >
+        {buscandoGps ? (
+          <ActivityIndicator color="#FFF" />
+        ) : (
+          <Text style={styles.textoBoton}>Estoy acá (Usar GPS)</Text>
+        )}
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.botonPrincipal} onPress={() => setModoManual(true)}>
@@ -87,7 +163,6 @@ const styles = StyleSheet.create({
   contenedorCentro: { flex: 1, justifyContent: 'center', padding: 20, backgroundColor: '#F7F7F2' },
   tituloMenu: { fontSize: 28, fontWeight: 'bold', marginBottom: 30, textAlign: 'center', color: '#183B42' },
   texto: { fontSize: 24, paddingTop: 40, paddingBottom: 20, paddingHorizontal: 20, color: '#183B42', fontWeight: 'bold' },
-  // Acá aplicamos el verde oscuro oficial de la app
   botonPrincipal: { backgroundColor: '#174F49', padding: 22, borderRadius: 12, marginBottom: 18 },
   botonVolver: { padding: 18, marginVertical: 10, borderRadius: 10, alignItems: 'center' },
   textoBoton: { color: '#FFF', fontSize: 18, fontWeight: 'bold', textAlign: 'center' },
