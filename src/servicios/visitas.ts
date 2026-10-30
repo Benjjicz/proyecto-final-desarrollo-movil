@@ -1,3 +1,4 @@
+import axios from 'axios';
 import * as Crypto from 'expo-crypto';
 import * as Location from 'expo-location';
 import * as Network from 'expo-network';
@@ -85,14 +86,12 @@ export function registrarVisitaManual(entrada: NuevaVisita): Promise<VisitaLocal
 export async function buscarLugarPorQr(codigo: string): Promise<Lugar> {
   const textoLimpio = codigo.trim();
   
-  const respuesta = await fetch(`${API_BASE_URL}/lugares/qr/${encodeURIComponent(textoLimpio)}`);
-  const json = await respuesta.json();
-
-  if (!respuesta.ok) {
-    throw new Error(json.error?.mensaje || 'El código no es válido.');
+  try {
+    const respuesta = await axios.get(`${API_BASE_URL}/lugares/qr/${encodeURIComponent(textoLimpio)}`);
+    return respuesta.data.datos;
+  } catch (error: any) {
+    throw new Error(error.response?.data?.error?.mensaje || 'El código no es válido.');
   }
-
-  return json.datos;
 }
 
 export async function registrarVisitaPorQr(
@@ -177,45 +176,42 @@ export const intentarSincronizar = async (): Promise<void> => {
           fotoUrlRemota = await subirFotoAServidor(fotoUrlRemota, token);
         }
 
-        const respuesta = await fetch(`${API_BASE_URL}/yo/visitas`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
+        const respuesta = await axios.post(
+          `${API_BASE_URL}/yo/visitas`,
+          {
             id: idValido,
             lugarId: visita.lugarId,
             fechaHora: visita.fechaHora,
             origen: visita.origen,
             fotoUri: fotoUrlRemota,
             nota: visita.nota ?? null,
-          }),
-        });
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+            },
+          }
+        );
 
-        if (respuesta.ok || respuesta.status === 200 || respuesta.status === 201) {
+        if (respuesta.status === 200 || respuesta.status === 201) {
           db.runSync('UPDATE visitas SET sincronizada = 1 WHERE id = ?', [idValido]);
-        } else {
-          const textoError = await respuesta.text();
-          console.warn(`No se pudo sincronizar la visita ${idValido}:`, textoError);
         }
-      } catch (errorIndividual) {
-        console.warn('Error sincronizando visita individual:', errorIndividual);
+      } catch (errorIndividual: any) {
+        console.warn(`No se pudo sincronizar la visita ${visita.id}:`, errorIndividual.message);
       }
     }
 
-    const respuestaLista = await fetch(`${API_BASE_URL}/yo/visitas?porPagina=500`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-    });
+    try {
+      const respuestaLista = await axios.get(`${API_BASE_URL}/yo/visitas?porPagina=500`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+        },
+      });
 
-    if (respuestaLista.ok) {
-      const jsonLista = await respuestaLista.json();
-      const visitasServidor: any[] = jsonLista?.datos ?? [];
+      const visitasServidor: any[] = respuestaLista.data?.datos ?? [];
 
       for (const remota of visitasServidor) {
         db.runSync(
@@ -232,13 +228,14 @@ export const intentarSincronizar = async (): Promise<void> => {
           ]
         );
       }
+    } catch (errorLista) {
+      console.warn('Error descargando lista de visitas:', errorLista);
     }
   } catch (error) {
     console.error('Error general en sincronización:', error);
   }
 };
 
-// --- NUEVA FUNCIÓN PARA LIMPIAR AL CERRAR SESIÓN ---
 export function limpiarVisitasLocales() {
   try {
     db.runSync('DELETE FROM visitas');

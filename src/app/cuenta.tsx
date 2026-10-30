@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -13,40 +14,35 @@ export default function PantallaCuenta() {
   const [contrasena, setContrasena] = useState('');
   const [procesando, setProcesando] = useState(false);
 
-  // Al abrir la pestaña, verificamos sesión y pedimos huella
   useEffect(() => {
     verificarSesion();
   }, []);
 
   const verificarSesion = async () => {
-    // 1. Pedimos huella/rostro o PIN si hay un token guardado
     const pasoBiometria = await reingresoBiometrico(); 
     
     if (pasoBiometria) {
-      // 2. Si pasó la biometría, validamos que el token no haya expirado (Error 401)
       const token = await obtenerTokenApi();
       try {
-        const respuesta = await fetch(`${API_BASE_URL}/yo/visitas`, {
-          method: 'GET',
+        await axios.get(`${API_BASE_URL}/yo/visitas`, {
           headers: { Authorization: `Bearer ${token}` }
         });
 
-        if (respuesta.status === 401) {
-          // ¡EL TOKEN MURIÓ O FUE REVOCADO! 
+        // Token válido
+        setEstaLogueado(true);
+      } catch (error: any) {
+        if (error.response && error.response.status === 401) {
+          // Token expirado o revocado
           await cerrarSesionAPI();
           limpiarVisitasLocales();
           setEstaLogueado(false);
           Alert.alert('Sesión expirada', 'Tu sesión caducó por seguridad. Volvé a ingresar.');
         } else {
-          // Token válido y vigente
+          // Sin internet o error del servidor, permitimos entrar offline
           setEstaLogueado(true);
         }
-      } catch (error) {
-        // Si el fetch falla porque no hay internet (Offline), lo dejamos entrar igual
-        setEstaLogueado(true);
       }
     } else {
-      // No pasó la biometría o directamente no había token guardado
       setEstaLogueado(false);
     }
     
@@ -62,8 +58,6 @@ export default function PantallaCuenta() {
     setProcesando(true);
     try {
       await iniciarSesionAPI(email.trim(), contrasena);
-      
-      // Descargamos los datos de la nube automáticamente
       await intentarSincronizar(); 
       
       setEstaLogueado(true);
@@ -83,7 +77,7 @@ export default function PantallaCuenta() {
         style: 'destructive', 
         onPress: async () => {
           await cerrarSesionAPI();
-          limpiarVisitasLocales(); // Limpia la base de datos de SQLite
+          limpiarVisitasLocales(); 
           setEstaLogueado(false);
           setEmail('');
           setContrasena('');
@@ -100,7 +94,6 @@ export default function PantallaCuenta() {
     );
   }
 
-  // --- VISTA: USUARIO LOGUEADO ---
   if (estaLogueado) {
     return (
       <View style={styles.contenedor}>
@@ -117,7 +110,6 @@ export default function PantallaCuenta() {
     );
   }
 
-  // --- VISTA: FORMULARIO DE LOGIN ---
   return (
     <KeyboardAvoidingView 
       style={styles.contenedor} 
